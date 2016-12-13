@@ -18,7 +18,7 @@ class ViewController: NSViewController {
        
     }
 
-    override var representedObject: AnyObject? {
+    override var representedObject: Any? {
         didSet {
         // Update the view, if already loaded.
         }

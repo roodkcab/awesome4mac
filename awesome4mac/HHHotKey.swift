@@ -10,39 +10,42 @@ import Foundation
 import Carbon
 
 class HHHotKey {
-    private let hotKey: UInt32
-    private let block: () -> ()
-    private var registered = true
+    private static var __once: () = {
+            HHHotKey.registerHandler()
+        }()
+    fileprivate let hotKey: UInt32
+    fileprivate let block: () -> ()
+    fileprivate var registered = true
     
     typealias action = () -> Void
     static var shortcuts = [UInt32:action]()
     
-    private init(hotKeyID: UInt32, block: () -> ()) {
+    fileprivate init(hotKeyID: UInt32, block: @escaping () -> ()) {
         self.hotKey = hotKeyID
         self.block = block
         HHHotKey.shortcuts[hotKey] = block
     }
     
     static func registerHandler() {
-        var eventHandler: EventHandlerRef = nil
+        var eventHandler: EventHandlerRef? = nil
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         
-        InstallEventHandler(GetApplicationEventTarget(), {(handlerRef: EventHandlerCallRef, eventRef: EventRef, ptr: UnsafeMutablePointer<Void>) -> OSStatus in
+        let hotkeyCallBack: EventHandlerUPP = { handlerRef, eventRef, ptr in
             var hotKeyID: EventHotKeyID = EventHotKeyID()
-            GetEventParameter(eventRef, OSType(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, sizeof(EventHotKeyID), nil, &hotKeyID)
+            GetEventParameter(eventRef, OSType(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
             //call defined action based on hotKeyID
             HHHotKey.shortcuts[hotKeyID.id]!()
             return noErr
-            }, 1, &eventType, nil, &eventHandler) == noErr
+        }
+        
+        InstallEventHandler(GetApplicationEventTarget(), hotkeyCallBack, 1, &eventType, nil, &eventHandler) == noErr
     }
     
-    private static var token: dispatch_once_t = 0
+    fileprivate static var token: Int = 0
     
-    class func register(keyCode: UInt32, modifiers: UInt32, block: () -> (), id: UInt32) -> HHHotKey? {
-        dispatch_once(&token) {
-            HHHotKey.registerHandler()
-        }
-        var hotKey: EventHotKeyRef = nil
+    class func register(_ keyCode: UInt32, modifiers: UInt32, block: @escaping () -> (), id: UInt32) -> HHHotKey? {
+        _ = HHHotKey.__once
+        var hotKey: EventHotKeyRef? = nil
         let hotKeyID = EventHotKeyID(signature:OSType(10000), id: id)
         RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), OptionBits(0), &hotKey)
         return HHHotKey(hotKeyID: id, block: block)

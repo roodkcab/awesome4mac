@@ -25,20 +25,21 @@ class MyObserver: NSObject, NSApplicationDelegate
     
     var currentWindow: AXUIElement! {
         let appRef = AXUIElementCreateApplication((currentApp?.processIdentifier)!);
-        return AccessibilityWrapper.windowsInApp(appRef.takeRetainedValue())!
+        return AccessibilityWrapper.windowsInApp(appRef)!
     }
     
     override init() {
         super.init()
         // app listeners
         currentCmd = 0
-        NSWorkspace.sharedWorkspace().notificationCenter.addObserver(self, selector: "currentApp:", name: NSWorkspaceDidActivateApplicationNotification, object: nil)
+        NSWorkspace.shared().notificationCenter.addObserver(self, selector: #selector(MyObserver.currentApp(_:)), name: NSNotification.Name.NSWorkspaceDidActivateApplication, object: nil)
     }
     
-    func currentApp(notification: NSNotification!) {
+    func currentApp(_ notification: Notification!) {
         let app = notification.userInfo![NSWorkspaceApplicationKey] as? NSRunningApplication
         if currentApp == nil || app?.bundleIdentifier != "com.imhuihui.awesome4mac" {
             currentApp = app
+            currentPosition = 0
             print(currentApp)
         }
     }
@@ -56,7 +57,7 @@ class MyObserver: NSObject, NSApplicationDelegate
         AccessibilityWrapper.setNewPositionSize(currentWindow, newPosition: nextRect, newSize: newSize)
     }
     
-    func changeWindowSize(cmd: Int) {
+    func changeWindowSize(_ cmd: Int) {
         let currentScreenRect = AccessibilityWrapper.getCurrentScreen(currentWindow).frame
         let screenOrigin = currentScreenRect.origin
         let screenSize = currentScreenRect.size
@@ -81,6 +82,15 @@ class MyObserver: NSObject, NSApplicationDelegate
                 let y = currentPosition < 2 ? 0 : screenSize.height/2
                 AccessibilityWrapper.setNewPositionSize(currentWindow, newPosition: CGPoint(x: x, y: y), newSize: CGSize(width: screenSize.width/2, height: screenSize.height/2))
                 currentPosition = currentPosition + 1
+            case 5:
+                let origin = AccessibilityWrapper.position(currentWindow)
+                let size = AccessibilityWrapper.size(currentWindow)
+                if currentPosition == 0 {
+                    AccessibilityWrapper.setNewPositionSize(currentWindow, newPosition: CGPoint(x: origin.x, y: origin.y), newSize: CGSize(width: size.width/2, height: size.height))
+                } else {
+                    AccessibilityWrapper.setNewPositionSize(currentWindow, newPosition: CGPoint(x: origin.x + size.width, y: origin.y), newSize: CGSize(width: size.width, height: size.height))
+                }
+                currentPosition = currentPosition + 1
             default:
                 return
         }
@@ -92,22 +102,23 @@ class MyObserver: NSObject, NSApplicationDelegate
 class AppDelegate: NSObject, NSApplicationDelegate {
     
     func acquireAXPrivileges() -> Bool {
-        let accessEnabled = AXIsProcessTrustedWithOptions(
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true])
+        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true as NSNumber]
+        let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary)
         if accessEnabled != Bool(1) {
             print("You need to enable the keylogger in the System Prefrences")
         }
         return accessEnabled == Bool(1)
     }
 
-    func applicationDidFinishLaunching(aNotification: NSNotification) {
+    func applicationDidFinishLaunching(_ aNotification: Notification) {
         
         //ask for accessibility privilege
         acquireAXPrivileges()
         
         //register application delegate to detect focused window
-        let application = NSApplication.sharedApplication()
+        let application = NSApplication.shared()
         let applicationDelegate = MyObserver()
+        application.setActivationPolicy(.prohibited)
         application.delegate = applicationDelegate
         
         HHHotKey.register(UInt32(kVK_ANSI_0), modifiers: UInt32(cmdKey|optionKey), block: {
@@ -129,11 +140,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         HHHotKey.register(UInt32(kVK_ANSI_4), modifiers: UInt32(cmdKey|optionKey), block: {
             applicationDelegate.changeWindowSize(4)
             }, id: 4)
+        
+        HHHotKey.register(UInt32(kVK_ANSI_5), modifiers: UInt32(cmdKey|optionKey), block: {
+            applicationDelegate.changeWindowSize(5)
+            }, id: 5)
     }
 
-    func applicationWillTerminate(aNotification: NSNotification) {
+    func applicationWillTerminate(_ aNotification: Notification) {
         // Insert code here to tear down your application
     }
 
 }
-
